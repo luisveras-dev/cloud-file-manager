@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cloud Drive - Gerenciador de Arquivos</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Cloud Drive</h1>
+      <p>Armazenamento e gerenciamento de arquivos em nuvem (AWS S3)</p>
+    </header>
+
+    <!-- Card de Upload -->
+    <section class="card upload-card">
+      <h2>Enviar Arquivo</h2>
+      <form id="upload-form">
+        <div class="drop-zone" id="drop-zone">
+          <input type="file" id="file-input" required />
+          <p id="file-label">Arraste um arquivo aqui ou clique para selecionar</p>
+        </div>
+        <button type="submit" id="btn-upload">Fazer Upload</button>
+      </form>
+      <div id="status-message" class="status-message"></div>
+    </section>
+
+    <!-- Lista de Arquivos -->
+    <section class="card">
+      <div class="card-header">
+        <h2>Arquivos Armazenados</h2>
+        <button id="btn-refresh" class="btn-secondary">Atualizar</button>
+      </div>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Nome</th>
+              <th>Tamanho</th>
+              <th>Data</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody id="files-table-body">
+            <!-- Linhas inseridas dinamicamente via JS -->
+            <tr>
+              <td colspan="4" class="text-center">Carregando arquivos...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
