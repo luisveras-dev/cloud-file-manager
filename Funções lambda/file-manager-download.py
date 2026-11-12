@@ -11,10 +11,17 @@ def lambda_handler(event, context):
     query_params = event.get('queryStringParameters') or {}
     file_key = query_params.get('key') or event.get('key')
 
+    headers = {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Allow-Methods': 'OPTIONS,GET'
+    }
+
     if not file_key:
         return {
             'statusCode': 400,
-            'headers': {'Content-Type': 'application/json'},
+            'headers': headers,
             'body': json.dumps({'error': 'Missing required parameter: key'})
         }
 
@@ -30,16 +37,15 @@ def lambda_handler(event, context):
         )
         return {
             'statusCode': 200,
-            'headers': {'Content-Type': 'application/json'},
+            'headers': headers,
             'body': json.dumps({
-            'presigned_url': url,
-            'expires_in_seconds': expiration
+                'presigned_url': url,
+                'expires_in_seconds': expiration
             })
-
         }
     except ClientError as e:
         return {
             'statusCode': 500,
-            'headers': {'Content-Type': 'application/json'},
+            'headers': headers,
             'body': json.dumps({'error': str(e)})
         }

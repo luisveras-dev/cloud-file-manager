@@ -18,7 +18,12 @@ def lambda_handler(event, context):
     
     return {
         'statusCode': 200,
-        'headers': {'Content-Type': 'application/json'},
+        'headers': {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Headers': 'Content-Type',
+            'Access-Control-Allow-Methods': 'OPTIONS,GET'
+        },
         'body': json.dumps({
             'bucket': bucket_name,
             'file_count': len(files),
