@@ -1,20 +1,30 @@
 import boto3
 import json
 
-s3_client = boto3.client('s3')
+s3 = boto3.client('s3')
 BUCKET_NAME = 'projeto-cloud-computing-bucket'
 
 def lambda_handler(event, context):
-    file_content = event.get('file_content')
-    file_name = event.get('file_name')
     
-    s3_client.put_object(
-        Bucket=BUCKET_NAME,
-        Key=file_name,
-        Body=file_content.encode('utf-8')
+    body = json.loads(event.get("body") or "{}")
+    file_name = body.get("filename")
+
+    
+    if not file_name:
+        return {
+            "statusCode": 400,
+            "body": json.dumps({"error": "filename parameter is required"})
+        }
+
+
+    presigned_url = s3.generate_presigned_url(
+        "put_object",
+        Params={"Bucket": BUCKET_NAME, "Key": file_name},
+        ExpiresIn=300
     )
     
     return {
-        'statusCode': 200,
-        'body': json.dumps(f'File {file_name} uploaded successfully!')
+        "statusCode": 200,
+        'headers': {'Content-Type': 'application/json'},
+        "body": json.dumps({"upload_url": presigned_url})
     }
