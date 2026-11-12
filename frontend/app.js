@@ -1,4 +1,7 @@
-const API_URL = "http://localhost:3000/api";
+// Endpoints oficiais provisionados no AWS API Gateway
+const API_LIST_URL = "https://cue8igv428.execute-api.us-east-2.amazonaws.com/prod";
+const API_DOWNLOAD_URL = "https://87oyrf9w8a.execute-api.us-east-2.amazonaws.com/prod";
+const API_UPLOAD_URL = "https://veicu6cgzb.execute-api.us-east-2.amazonaws.com/prod";
 
 const tableBody = document.getElementById("files-table-body");
 const uploadForm = document.getElementById("upload-form");
@@ -18,17 +21,17 @@ fileInput.addEventListener("change", () => {
 
 // Formatar tamanho em bytes para KB ou MB
 function formatSize(bytes) {
-  if (bytes === 0) return "0 Bytes";
+  if (!bytes || bytes === 0) return "0 Bytes";
   const k = 1024;
   const sizes = ["Bytes", "KB", "MB", "GB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 }
 
-// Formatar data ISO para padrão local
-function formatDate(isoString) {
-  if (!isoString) return "-";
-  const date = new Date(isoString);
+// Formatar data para padrão legível
+function formatDate(dateStr) {
+  if (!dateStr) return "-";
+  const date = new Date(dateStr);
   return date.toLocaleString("pt-BR");
 }
 
@@ -41,41 +44,45 @@ function showStatus(message, isError = false) {
   }, 4000);
 }
 
-// Buscar e listar arquivos do backend
+// Buscar e listar arquivos do bucket S3 via API Gateway
 async function loadFiles() {
-  tableBody.innerHTML = `<tr><td colspan="4" class="text-center">Carregando arquivos...</td></tr>`;
+  tableBody.innerHTML = `<tr><td colspan="4" class="text-center">Consultando arquivos na AWS...</td></tr>`;
 
   try {
-    const res = await fetch(`${API_URL}/files`);
-    if (!res.ok) throw new Error("Falha ao consultar a API");
+    const res = await fetch(API_LIST_URL);
+    if (!res.ok) throw new Error(`Falha ao consultar a API (${res.status})`);
 
-    const files = await res.json();
+    const data = await res.json();
+    const files = data.files || [];
 
     if (files.length === 0) {
-      tableBody.innerHTML = `<tr><td colspan="4" class="text-center">Nenhum arquivo encontrado no bucket.</td></tr>`;
+      tableBody.innerHTML = `<tr><td colspan="4" class="text-center">Nenhum arquivo encontrado no bucket S3.</td></tr>`;
       return;
     }
 
     tableBody.innerHTML = "";
     files.forEach(file => {
+      const fileName = file.key || file.name;
+      const fileSize = file.size_bytes !== undefined ? file.size_bytes : file.size;
+      const fileDate = file.last_modified || file.lastModified;
+
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td><strong>${file.name}</strong></td>
-        <td>${formatSize(file.size)}</td>
-        <td>${formatDate(file.lastModified)}</td>
+        <td><strong>${fileName}</strong></td>
+        <td>${formatSize(fileSize)}</td>
+        <td>${formatDate(fileDate)}</td>
         <td>
-          <button class="btn-download" onclick="downloadFile('${file.name}')">Download</button>
-          <button class="btn-delete" onclick="deleteFile('${file.name}')">Excluir</button>
+          <button class="btn-download" onclick="downloadFile('${fileName}')">Download</button>
         </td>
       `;
       tableBody.appendChild(tr);
     });
   } catch (err) {
-    tableBody.innerHTML = `<tr><td colspan="4" class="text-center" style="color: var(--danger)">Erro ao carregar arquivos: ${err.message}</td></tr>`;
+    tableBody.innerHTML = `<tr><td colspan="4" class="text-center" style="color: var(--danger)">Erro ao carregar arquivos da AWS: ${err.message}</td></tr>`;
   }
 }
 
-// Enviar arquivo
+// Enviar arquivo: 1) Pede presigned URL para a Lambda; 2) Envia o arquivo direto para o S3
 uploadForm.addEventListener("submit", async (e) => {
   e.preventDefault();
 
@@ -84,19 +91,40 @@ uploadForm.addEventListener("submit", async (e) => {
     return;
   }
 
-  const formData = new FormData();
-  formData.append("file", fileInput.files[0]);
+  const selectedFile = fileInput.files[0];
 
   try {
-    showStatus("Enviando arquivo para o S3...");
-    const res = await fetch(`${API_URL}/upload`, {
+    showStatus("Solicitando permissão de upload à AWS...");
+
+    // Passo 1: Obter a presigned URL de upload
+    const presignRes = await fetch(API_UPLOAD_URL, {
       method: "POST",
-      body: formData
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filename: selectedFile.name })
     });
 
-    if (!res.ok) throw new Error("Erro no envio do arquivo");
+    if (!presignRes.ok) {
+      throw new Error(`Erro ao gerar link de upload (${presignRes.status})`);
+    }
 
-    showStatus("Arquivo enviado com sucesso!");
+    const { upload_url } = await presignRes.json();
+    if (!upload_url) {
+      throw new Error("Resposta da AWS não continha a URL de upload.");
+    }
+
+    showStatus("Enviando arquivo diretamente para o S3...");
+
+    // Passo 2: Upload direto para o S3 via PUT
+    const uploadRes = await fetch(upload_url, {
+      method: "PUT",
+      body: selectedFile
+    });
+
+    if (!uploadRes.ok) {
+      throw new Error(`Falha no upload para o S3 (${uploadRes.status})`);
+    }
+
+    showStatus("Arquivo enviado com sucesso para a AWS!");
     uploadForm.reset();
     fileLabel.textContent = "Arraste um arquivo aqui ou clique para selecionar";
     loadFiles();
@@ -105,38 +133,22 @@ uploadForm.addEventListener("submit", async (e) => {
   }
 });
 
-// Download via URL segura (pré-assinada)
+// Download via URL temporária segura do S3
 async function downloadFile(fileName) {
   try {
-    const res = await fetch(`${API_URL}/download/${encodeURIComponent(fileName)}`);
+    const res = await fetch(`${API_DOWNLOAD_URL}?key=${encodeURIComponent(fileName)}`);
     if (!res.ok) throw new Error("Não foi possível gerar link de download");
 
     const data = await res.json();
-    window.open(data.url, "_blank");
+    if (!data.presigned_url) throw new Error("URL de download não retornada");
+
+    window.open(data.presigned_url, "_blank");
   } catch (err) {
     alert(`Erro ao baixar arquivo: ${err.message}`);
   }
 }
 
-// Excluir arquivo
-async function deleteFile(fileName) {
-  if (!confirm(`Deseja realmente excluir "${fileName}"?`)) return;
-
-  try {
-    const res = await fetch(`${API_URL}/files/${encodeURIComponent(fileName)}`, {
-      method: "DELETE"
-    });
-
-    if (!res.ok) throw new Error("Erro ao excluir arquivo");
-
-    showStatus("Arquivo excluído com sucesso.");
-    loadFiles();
-  } catch (err) {
-    alert(`Erro: ${err.message}`);
-  }
-}
-
 btnRefresh.addEventListener("click", loadFiles);
 
-// Carregamento inicial
+// Carregamento inicial ao abrir a página
 loadFiles();
